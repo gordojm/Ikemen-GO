@@ -387,7 +387,7 @@ type HealthBar struct {
 	mid_delay  int32
 	mid_mult   float32
 	mid_steps  float32
-	gethit     bool
+	lasthits   int32
 	scalefill  bool
 }
 
@@ -453,9 +453,9 @@ func (hb *HealthBar) step(ref int, hbr *HealthBar, lb *Lifebar) {
 	var redVal int32 = sys.chars[ref][0].redLife - sys.chars[ref][0].life
 	var getHit bool = (sys.chars[ref][0].receivedHits != 0 || sys.chars[ref][0].ss.moveType == MT_H) && !sys.chars[ref][0].scf(SCF_over_ko)
 
-	// Trigger shake effect when player gets hit
+	// Trigger shake effect when player gets hit (on every new hit like LifeBarCombo)
 	playerIndex := sys.chars[ref][0].teamside
-	if getHit && !hb.gethit && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
+	if sys.chars[ref][0].receivedHits > hb.lasthits && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
 		lb.shaketime[playerIndex] = lb.lifebar_time[playerIndex]
 	}
 
@@ -469,12 +469,12 @@ func (hb *HealthBar) step(ref int, hbr *HealthBar, lb *Lifebar) {
 	hb.shift.anim.srcAlpha = int16(255 * (1 - life))
 	hb.shift.anim.dstAlpha = int16(255 * life)
 
-	if !hb.mid_freeze && getHit && !hb.gethit && len(hb.mid.anim.frames) > 0 {
+	if !hb.mid_freeze && getHit && sys.chars[ref][0].receivedHits > hb.lasthits && len(hb.mid.anim.frames) > 0 {
 		hbr.mlifetime = hb.mid_delay
 		hbr.midlife = hbr.oldlife
 		hbr.midlifeMin = hbr.oldlife
 	}
-	hb.gethit = getHit
+	hb.lasthits = sys.chars[ref][0].receivedHits
 	if hb.mid_freeze && getHit && len(hb.mid.anim.frames) > 0 {
 		if hbr.mlifetime < hb.mid_delay {
 			hbr.mlifetime = hb.mid_delay
@@ -748,7 +748,7 @@ type PowerBar struct {
 	prevLevel        int32
 	levelbars        bool
 	scalefill        bool
-	gethit           bool
+	lasthits         int32
 }
 
 func newPowerBar() *PowerBar {
@@ -817,13 +817,12 @@ func readPowerBar(pre string, is IniSection,
 }
 
 func (pb *PowerBar) step(ref int, pbr *PowerBar, snd *Snd, lb *Lifebar) {
-	// Trigger shake effect when player gets hit (same condition as HealthBar)
-	var getHit bool = (sys.chars[ref][0].receivedHits != 0 || sys.chars[ref][0].ss.moveType == MT_H) && !sys.chars[ref][0].scf(SCF_over_ko)
+	// Trigger shake effect when player gets hit (on every new hit like LifeBarCombo)
 	playerIndex := sys.chars[ref][0].teamside
-	if getHit && !pb.gethit && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
+	if sys.chars[ref][0].receivedHits > pb.lasthits && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
 		lb.shaketime[playerIndex] = lb.lifebar_time[playerIndex]
 	}
-	pb.gethit = getHit
+	pb.lasthits = sys.chars[ref][0].receivedHits
 
 	pbval := sys.chars[ref][0].getPower()
 	power := float32(pbval) / float32(sys.chars[ref][0].powerMax)
@@ -1578,7 +1577,7 @@ type LifeBarFace struct {
 	numko             int32
 	old_spr           [2]int32
 	old_pal           [2]int32
-	gethit            bool
+	lasthits          int32
 }
 
 func newLifeBarFace() *LifeBarFace {
@@ -1622,13 +1621,12 @@ func readLifeBarFace(pre string, is IniSection, sff *Sff, at AnimationTable) *Li
 }
 
 func (fa *LifeBarFace) step(ref int, far *LifeBarFace, lb *Lifebar) {
-	// Trigger shake effect when player gets hit (same condition as HealthBar)
-	var getHit bool = (sys.chars[ref][0].receivedHits != 0 || sys.chars[ref][0].ss.moveType == MT_H) && !sys.chars[ref][0].scf(SCF_over_ko)
+	// Trigger shake effect when player gets hit (on every new hit like LifeBarCombo)
 	playerIndex := sys.chars[ref][0].teamside
-	if getHit && !fa.gethit && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
+	if sys.chars[ref][0].receivedHits > fa.lasthits && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
 		lb.shaketime[playerIndex] = lb.lifebar_time[playerIndex]
 	}
-	fa.gethit = getHit
+	fa.lasthits = sys.chars[ref][0].receivedHits
 
 	group, number := int16(fa.face_spr[0]), int16(fa.face_spr[1])
 	if sys.chars[ref][0] != nil && sys.chars[ref][0].anim != nil {
@@ -1794,7 +1792,7 @@ type LifeBarName struct {
 	teammate_name    LbText
 	teammate_bg      AnimLayout
 	numko            int32
-	gethit           bool
+	lasthits         int32
 }
 
 func newLifeBarName() *LifeBarName {
@@ -1817,13 +1815,12 @@ func readLifeBarName(pre string, is IniSection,
 }
 
 func (nm *LifeBarName) step(ref int, lb *Lifebar) {
-	// Trigger shake effect when player gets hit (same condition as HealthBar)
-	var getHit bool = (sys.chars[ref][0].receivedHits != 0 || sys.chars[ref][0].ss.moveType == MT_H) && !sys.chars[ref][0].scf(SCF_over_ko)
+	// Trigger shake effect when player gets hit (on every new hit like LifeBarCombo)
 	playerIndex := sys.chars[ref][0].teamside
-	if getHit && !nm.gethit && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
+	if sys.chars[ref][0].receivedHits > nm.lasthits && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
 		lb.shaketime[playerIndex] = lb.lifebar_time[playerIndex]
 	}
-	nm.gethit = getHit
+	nm.lasthits = sys.chars[ref][0].receivedHits
 
 	nm.bg.Action()
 	nm.teammate_bg.Action()
