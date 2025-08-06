@@ -819,8 +819,17 @@ func readPowerBar(pre string, is IniSection,
 func (pb *PowerBar) step(ref int, pbr *PowerBar, snd *Snd, lb *Lifebar) {
 	// Trigger shake effect when player gets hit (on every new hit like LifeBarCombo)
 	playerIndex := sys.chars[ref][0].teamside
-	if sys.chars[ref][0].receivedHits > pb.lasthits && playerIndex >= 0 && playerIndex <= 1 && lb.lifebar_shake[playerIndex] {
-		lb.shaketime[playerIndex] = lb.lifebar_time[playerIndex]
+	if sys.chars[ref][0].receivedHits > pb.lasthits {
+		fmt.Printf("DEBUG: PowerBar hit detected - Player %v, hits: %v -> %v\n", 
+			playerIndex, pb.lasthits, sys.chars[ref][0].receivedHits)
+	}
+	if sys.chars[ref][0].receivedHits > pb.lasthits && playerIndex >= 0 && playerIndex <= 1 && lb.powerbar_shake[playerIndex] {
+		fmt.Printf("DEBUG: PowerBar shake triggered - Player %v, shaketime set to %v\n", 
+			playerIndex, lb.powerbar_time[playerIndex])
+		lb.powerbar_shaketime[playerIndex] = lb.powerbar_time[playerIndex]
+	} else if sys.chars[ref][0].receivedHits > pb.lasthits && playerIndex >= 0 && playerIndex <= 1 {
+		fmt.Printf("DEBUG: PowerBar hit detected but shake disabled - Player %v, shake=%v\n", 
+			playerIndex, lb.powerbar_shake[playerIndex])
 	}
 	pb.lasthits = sys.chars[ref][0].receivedHits
 
@@ -922,7 +931,7 @@ func (pb *PowerBar) reset() {
 func (pb *PowerBar) bgDraw(layerno int16, ref int, lb *Lifebar) {
 	// Apply shake effect using scale factor like LifeBarCombo
 	playerIndex := sys.chars[ref][0].teamside
-	z := lb.getShakeFactor(playerIndex)
+	z := lb.getPowerbarShakeFactor(playerIndex)
 	posX, posY := float32(pb.pos[0])/z, float32(pb.pos[1])/z
 
 	pbval := sys.chars[ref][0].getPower()
@@ -940,7 +949,7 @@ func (pb *PowerBar) bgDraw(layerno int16, ref int, lb *Lifebar) {
 func (pb *PowerBar) draw(layerno int16, ref int, pbr *PowerBar, f []*Fnt, lb *Lifebar) {
 	// Apply shake effect using scale factor like LifeBarCombo
 	playerIndex := sys.chars[ref][0].teamside
-	z := lb.getShakeFactor(playerIndex)
+	z := lb.getPowerbarShakeFactor(playerIndex)
 	posX, posY := float32(pb.pos[0])/z, float32(pb.pos[1])/z
 
 	pbval := sys.chars[ref][0].getPower()
@@ -4049,10 +4058,14 @@ type Lifebar struct {
 	fnt_scale     float32
 	fx_limit      int
 	textsprite    []*TextSprite
-	lifebar_shake [2]bool
-	lifebar_time  [2]int32
-	lifebar_mult  [2]float32
-	shaketime     [2]int32
+	lifebar_shake    [2]bool
+	lifebar_time     [2]int32
+	lifebar_mult     [2]float32
+	shaketime        [2]int32
+	powerbar_shake   [2]bool
+	powerbar_time    [2]int32
+	powerbar_mult    [2]float32
+	powerbar_shaketime [2]int32
 }
 
 func loadLifebar(def string) (*Lifebar, error) {
@@ -4241,6 +4254,18 @@ func loadLifebar(def string) (*Lifebar, error) {
 			if l.pb[0][1] == nil {
 				l.pb[0][1] = readPowerBar("p2.", is, l.sff, l.at, l.fnt[:])
 			}
+			// Read powerbar shake configuration for p1 and p2
+			is.ReadBool("p1.shake", &l.powerbar_shake[0])
+			is.ReadI32("p1.time", &l.powerbar_time[0])
+			is.ReadF32("p1.mult", &l.powerbar_mult[0])
+			is.ReadBool("p2.shake", &l.powerbar_shake[1])
+			is.ReadI32("p2.time", &l.powerbar_time[1])
+			is.ReadF32("p2.mult", &l.powerbar_mult[1])
+			// DEBUG: Print loaded powerbar shake values
+			fmt.Printf("DEBUG: Powerbar shake config loaded - P1: shake=%v, time=%v, mult=%v\n", 
+				l.powerbar_shake[0], l.powerbar_time[0], l.powerbar_mult[0])
+			fmt.Printf("DEBUG: Powerbar shake config loaded - P2: shake=%v, time=%v, mult=%v\n", 
+				l.powerbar_shake[1], l.powerbar_time[1], l.powerbar_mult[1])
 		case "guardbar":
 			if l.gb[0][0] == nil {
 				l.gb[0][0] = readGuardBar("p1.", is, l.sff, l.at, l.fnt[:])
@@ -4830,6 +4855,16 @@ func (l *Lifebar) step() {
 			l.shaketime[i]--
 		}
 	}
+	// Powerbar shake countdown for both players
+	for i := 0; i < 2; i++ {
+		if l.powerbar_shaketime[i] > 0 {
+			if l.powerbar_shaketime[i] % 30 == 0 { // Print every 30th frame to avoid spam
+				fmt.Printf("DEBUG: PowerBar shake countdown - Player %v, shaketime=%v\n", 
+					i, l.powerbar_shaketime[i])
+			}
+			l.powerbar_shaketime[i]--
+		}
+	}
 }
 
 func (l *Lifebar) RemoveText(id, ownerid int32) {
@@ -4853,6 +4888,21 @@ func (l *Lifebar) getShakeFactor(playerIndex int) float32 {
 	}
 	if l.shaketime[playerIndex] > 0 {
 		return 1 + float32(l.shaketime[playerIndex])*l.lifebar_mult[playerIndex]*float32(math.Sin(float64(l.shaketime[playerIndex])*(math.Pi/2.5)))
+	}
+	return 1
+}
+
+func (l *Lifebar) getPowerbarShakeFactor(playerIndex int) float32 {
+	if playerIndex < 0 || playerIndex > 1 {
+		return 1
+	}
+	if l.powerbar_shaketime[playerIndex] > 0 {
+		factor := 1 + float32(l.powerbar_shaketime[playerIndex])*l.powerbar_mult[playerIndex]*float32(math.Sin(float64(l.powerbar_shaketime[playerIndex])*(math.Pi/2.5)))
+		if l.powerbar_shaketime[playerIndex] % 10 == 0 { // Print every 10th frame to avoid spam
+			fmt.Printf("DEBUG: PowerBar shake factor - Player %v, shaketime=%v, mult=%v, factor=%v\n", 
+				playerIndex, l.powerbar_shaketime[playerIndex], l.powerbar_mult[playerIndex], factor)
+		}
+		return factor
 	}
 	return 1
 }
