@@ -4262,28 +4262,35 @@ function start.f_stageMusic()
 			end
 		end
 	end
-	-- Stop liferound music when KO happens (roundstate = 3)
-	if roundstate() == 3 and start.bgmstate == 1 then
-		print("DEBUG: Stopping liferound music at KO")
-		main.f_playBGM(true) -- Stop current music
-		start.liferoundWasPlaying = true -- Flag for transition music
-		start.bgmstate = 0
-	end
 	
 	-- Play transition music between rounds (roundstate = 4)  
 	local roundNo = start.bgmround
-	if roundstate() == 4 and start.liferoundWasPlaying and start.bgmstate == 0 then
-		if start.t_music.musictransition ~= nil and start.t_music.musictransition[roundNo] ~= nil and start.t_music.musictransition[roundNo].bgmusic ~= nil then
-			print("DEBUG: Playing transition music for round " .. roundNo)
-			main.f_playBGM(false, start.t_music.musictransition[roundNo].bgmusic, start.t_music.musictransition[roundNo].bgmloop or 0, start.t_music.musictransition[roundNo].bgmvolume, start.t_music.musictransition[roundNo].bgmloopstart, start.t_music.musictransition[roundNo].bgmloopend)
-			start.bgmstate = 2 -- Set special state to indicate transition music is playing
+	if roundstate() == 4 then
+		-- Stop liferoundX music if it's still playing and set flag for transition
+		if start.bgmstate == 1 then
+			print("DEBUG: Stopping liferound music for transition")
+			main.f_playBGM(true) -- Stop current music
+			start.liferoundWasPlaying = true -- Flag for transition music
+			start.bgmstate = 0
 		end
-		start.liferoundWasPlaying = false -- Clear flag
+		
+		if start.liferoundWasPlaying and start.bgmstate == 0 then
+			if start.t_music.musictransition ~= nil and start.t_music.musictransition[roundNo] ~= nil and start.t_music.musictransition[roundNo].bgmusic ~= nil then
+				print("DEBUG: Playing transition music for round " .. roundNo)
+				main.f_playBGM(false, start.t_music.musictransition[roundNo].bgmusic, start.t_music.musictransition[roundNo].bgmloop or 0, start.t_music.musictransition[roundNo].bgmvolume, start.t_music.musictransition[roundNo].bgmloopstart, start.t_music.musictransition[roundNo].bgmloopend)
+				start.bgmstate = 2 -- Set special state to indicate transition music is playing
+			end
+			start.liferoundWasPlaying = false -- Clear flag
+		end
 	end
 	-- bgmusic.victory
 	if #start.t_music.musicvictory > 0 and start.bgmstate ~= -1 and roundstate() == 3 then
 		for i = 1, 2 do
 			if start.t_music.musicvictory[i] ~= nil and player(i) and win() and decisiveround() then --assign sys.debugWC to player i
+				-- Stop liferoundX music if it's still playing before starting victory music
+				if start.bgmstate == 1 then
+					print("DEBUG: Stopping liferound music for victory music")
+				end
 				main.f_playBGM(true, start.t_music.musicvictory[i].bgmusic, 1, start.t_music.musicvictory[i].bgmvolume, start.t_music.musicvictory[i].bgmloopstart, start.t_music.musicvictory[i].bgmloopend)
 				start.bgmstate = -1
 				break
