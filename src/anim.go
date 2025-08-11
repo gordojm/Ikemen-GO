@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -971,26 +972,51 @@ func (dl *DrawList) add(sd *SprData) {
 		return
 	}
 
-	i, start := 0, 0
-	for l := len(*dl); l > 0; {
-		i = start + l>>1
-		if sd.priority <= (*dl)[i].priority {
-			l = i - start
-		} else if i == start {
-			i++
-			l = 0
-		} else {
-			l -= i - start
-			start = i
+	// Before: sort every time we add a sprite
+	// After: add all sprites first then sort before drawing
+	/*
+		i, start := 0, 0
+		for l := len(*dl); l > 0; {
+			i = start + l>>1
+			if sd.priority <= (*dl)[i].priority {
+				l = i - start
+			} else if i == start {
+				i++
+				l = 0
+			} else {
+				l -= i - start
+				start = i
+			}
 		}
-	}
-	*dl = append(*dl, nil)
-	copy((*dl)[i+1:], (*dl)[i:])
-	(*dl)[i] = sd
+		*dl = append(*dl, nil)
+		copy((*dl)[i+1:], (*dl)[i:])
+		(*dl)[i] = sd
+	*/
+
+	// Just append. We will sort everything later in one go
+	*dl = append(*dl, sd)
 }
 
 func (dl DrawList) draw(cameraX, cameraY, cameraScl float32) {
-	for _, s := range dl {
+	if len(dl) == 0 {
+		return
+	}
+
+	// Sort by descending sprpriority
+	sort.SliceStable(dl, func(i, j int) bool {
+		if dl[i].priority != dl[j].priority {
+			return dl[i].priority > dl[j].priority
+		}
+		return false
+	})
+
+	// Common variables
+	shake := sys.envShake.getOffset()
+
+	// Draw the entire list in reverse
+	for i := len(dl) - 1; i >= 0; i-- {
+		s := dl[i]
+
 		// Skip blank SprData
 		// https://github.com/ikemen-engine/Ikemen-GO/issues/2433
 		if s.isBlank() {
@@ -1011,9 +1037,8 @@ func (dl DrawList) draw(cameraX, cameraY, cameraScl float32) {
 			pos = [2]float32{s.pos[0], s.pos[1] + float32(sys.gameHeight-240)}
 			cs = 1
 		} else {
-			es := sys.envShake.getOffset()
-			pos = [2]float32{(sys.cam.Offset[0]-es[0])/cs - (cameraX - s.pos[0]),
-				(sys.cam.GroundLevel()+(sys.cam.Offset[1]-es[1]))/cs -
+			pos = [2]float32{(sys.cam.Offset[0]-shake[0])/cs - (cameraX - s.pos[0]),
+				(sys.cam.GroundLevel()+(sys.cam.Offset[1]-shake[1]))/cs -
 					(cameraY/cs - s.pos[1])}
 		}
 
@@ -1053,26 +1078,17 @@ func (dl DrawList) draw(cameraX, cameraY, cameraScl float32) {
 
 type ShadowSprite struct {
 	*SprData
-	shadowColor       int32
-	shadowAlpha       int32
-	shadowIntensity   int32
-	shadowOffset      [2]float32
-	shadowWindow      [4]float32
-	shadowXshear      float32
-	shadowYscale      float32
-	shadowRot         Rotation
-	shadowProjection  int32
-	shadowfLength     float32
-	reflectColor      int32
-	reflectIntensity  int32
-	reflectOffset     [2]float32
-	reflectWindow     [4]float32
-	reflectXshear     float32
-	reflectYscale     float32
-	reflectRot        Rotation
-	reflectProjection int32
-	reflectfLength    float32
-	fadeOffset        float32
+	shadowColor      int32
+	shadowAlpha      int32
+	shadowIntensity  int32
+	shadowOffset     [2]float32
+	shadowWindow     [4]float32
+	shadowXshear     float32
+	shadowYscale     float32
+	shadowRot        Rotation
+	shadowProjection int32
+	shadowfLength    float32
+	fadeOffset       float32
 }
 
 type ShadowList []*ShadowSprite
@@ -1083,26 +1099,48 @@ func (sl *ShadowList) add(ss *ShadowSprite) {
 		return
 	}
 
-	i, start := 0, 0
-	for l := len(*sl); l > 0; {
-		i = start + l>>1
-		if ss.priority <= (*sl)[i].priority {
-			l = i - start
-		} else if i == start {
-			i++
-			l = 0
-		} else {
-			l -= i - start
-			start = i
+	/*
+		i, start := 0, 0
+		for l := len(*sl); l > 0; {
+			i = start + l>>1
+			if ss.priority <= (*sl)[i].priority {
+				l = i - start
+			} else if i == start {
+				i++
+				l = 0
+			} else {
+				l -= i - start
+				start = i
+			}
 		}
-	}
-	*sl = append(*sl, nil)
-	copy((*sl)[i+1:], (*sl)[i:])
-	(*sl)[i] = ss
+		*sl = append(*sl, nil)
+		copy((*sl)[i+1:], (*sl)[i:])
+		(*sl)[i] = ss
+	*/
+
+	// Just append. We will sort everything later in one go
+	*sl = append(*sl, ss)
 }
 
 func (sl ShadowList) draw(x, y, scl float32) {
-	for _, s := range sl {
+	if len(sl) == 0 {
+		return
+	}
+
+	// Sort by descending sprpriority
+	sort.SliceStable(sl, func(i, j int) bool {
+		if sl[i].priority != sl[j].priority {
+			return sl[i].priority > sl[j].priority
+		}
+		return false
+	})
+
+	// Common variables
+	shake := sys.envShake.getOffset()
+
+	// Draw the entire list in reverse
+	for i := len(sl) - 1; i >= 0; i-- {
+		s := sl[i]
 
 		// Skip blank shadows
 		if s == nil || s.anim == nil || s.anim.isBlank() {
@@ -1211,7 +1249,7 @@ func (sl ShadowList) draw(x, y, scl float32) {
 		}
 
 		drawwindow := &sys.scrrect
-		es := sys.envShake.getOffset()
+
 		// TODO: If the char has an active window sctrl, shadows should also be affected, in addition to the stage window
 		if sys.stage.sdw.window != [4]float32{0, 0, 0, 0} || s.shadowWindow != [4]float32{0, 0, 0, 0} {
 			var w [4]float32
@@ -1235,8 +1273,8 @@ func (sl ShadowList) draw(x, y, scl float32) {
 				w[i] *= sys.stage.localscl
 			}
 
-			window[0] = int32(((sys.cam.Offset[0] - es[0]) - (x * scl) + w[0]*scl + float32(sys.gameWidth)/2) * sys.widthScale)
-			window[1] = int32((sys.cam.GroundLevel() + (sys.cam.Offset[1] - es[1]) - y + w[1]*SignF(yscale)*scl) * sys.heightScale)
+			window[0] = int32(((sys.cam.Offset[0] - shake[0]) - (x * scl) + w[0]*scl + float32(sys.gameWidth)/2) * sys.widthScale)
+			window[1] = int32((sys.cam.GroundLevel() + (sys.cam.Offset[1] - shake[1]) - y + w[1]*SignF(yscale)*scl) * sys.heightScale)
 			window[2] = int32(scl * (w[2] - w[0]) * sys.widthScale)
 			window[3] = int32(scl * (w[3] - w[1]) * sys.heightScale * SignF(yscale))
 
@@ -1244,16 +1282,63 @@ func (sl ShadowList) draw(x, y, scl float32) {
 		}
 
 		s.anim.ShadowDraw(drawwindow,
-			(sys.cam.Offset[0]-es[0])-((x-s.pos[0]-offsetX)*scl),
-			sys.cam.GroundLevel()+(sys.cam.Offset[1]-es[1])-y-(s.pos[1]*yscale-offsetY)*scl,
+			(sys.cam.Offset[0]-shake[0])-((x-s.pos[0]-offsetX)*scl),
+			sys.cam.GroundLevel()+(sys.cam.Offset[1]-shake[1])-y-(s.pos[1]*yscale-offsetY)*scl,
 			scl*s.scl[0], scl*-s.scl[1],
 			yscale, xshear, rot,
 			s.fx, s.oldVer, uint32(color), intensity, s.facing, s.airOffsetFix, projection, fLength)
 	}
 }
 
-func (sl ShadowList) drawReflection(x, y, scl float32) {
-	for _, s := range sl {
+type ReflectionSprite struct {
+	*SprData
+	reflectColor      int32
+	reflectIntensity  int32
+	reflectOffset     [2]float32
+	reflectWindow     [4]float32
+	reflectXshear     float32
+	reflectYscale     float32
+	reflectRot        Rotation
+	reflectProjection int32
+	reflectfLength    float32
+	fadeOffset        float32
+}
+
+type ReflectionList []*ReflectionSprite
+
+func (rl *ReflectionList) add(rs *ReflectionSprite) {
+	if sys.frameSkip || rs.SprData == nil || rs.SprData.isBlank() {
+		return
+	}
+
+	// Stage without reflections
+	// TODO: Maybe ModifyReflection should be able to bypass this
+	if sys.stage.reflection.intensity == 0 {
+		return
+	}
+
+	*rl = append(*rl, rs)
+}
+
+func (rl ReflectionList) draw(x, y, scl float32) {
+	if len(rl) == 0 {
+		return
+	}
+
+	// Sort by descending sprpriority
+	sort.SliceStable(rl, func(i, j int) bool {
+		if rl[i].priority != rl[j].priority {
+			return rl[i].priority > rl[j].priority
+		}
+		return false
+	})
+
+	// Common variables
+	shake := sys.envShake.getOffset()
+
+	// Draw the entire list in reverse
+	for i := len(rl) - 1; i >= 0; i-- {
+		s := rl[i]
 
 		// Skip blank reflections
 		if s == nil || s.anim == nil || s.anim.isBlank() {
@@ -1365,7 +1450,7 @@ func (sl ShadowList) drawReflection(x, y, scl float32) {
 		}
 
 		drawwindow := &sys.scrrect
-		es := sys.envShake.getOffset()
+
 		// TODO: If the char has an active window sctrl, reflections should also be affected, in addition to the stage window
 		if sys.stage.reflection.window != [4]float32{0, 0, 0, 0} || s.reflectWindow != [4]float32{0, 0, 0, 0} {
 			var w [4]float32
@@ -1389,8 +1474,8 @@ func (sl ShadowList) drawReflection(x, y, scl float32) {
 				w[i] *= sys.stage.localscl
 			}
 
-			window[0] = int32(((sys.cam.Offset[0] - es[0]) - (x * scl) + w[0]*scl + float32(sys.gameWidth)/2) * sys.widthScale)
-			window[1] = int32((sys.cam.GroundLevel() + (sys.cam.Offset[1] - es[1]) - y + w[1]*SignF(yscale)*scl) * sys.heightScale)
+			window[0] = int32(((sys.cam.Offset[0] - shake[0]) - (x * scl) + w[0]*scl + float32(sys.gameWidth)/2) * sys.widthScale)
+			window[1] = int32((sys.cam.GroundLevel() + (sys.cam.Offset[1] - shake[1]) - y + w[1]*SignF(yscale)*scl) * sys.heightScale)
 			window[2] = int32(scl * (w[2] - w[0]) * sys.widthScale)
 			window[3] = int32(scl * (w[3] - w[1]) * sys.heightScale * SignF(yscale))
 
@@ -1398,8 +1483,8 @@ func (sl ShadowList) drawReflection(x, y, scl float32) {
 		}
 
 		s.anim.Draw(drawwindow,
-			(sys.cam.Offset[0]-es[0])/scl-(x-s.pos[0]-offsetX),
-			(sys.cam.GroundLevel()+sys.cam.Offset[1]-es[1])/scl-y/scl-(s.pos[1]*yscale-offsetY),
+			(sys.cam.Offset[0]-shake[0])/scl-(x-s.pos[0]-offsetX),
+			(sys.cam.GroundLevel()+sys.cam.Offset[1]-shake[1])/scl-y/scl-(s.pos[1]*yscale-offsetY),
 			scl, scl, s.scl[0], s.scl[0],
 			-s.scl[1]*yscale, xshear, rot, float32(sys.gameWidth)/2,
 			s.fx, s.oldVer, s.facing, s.airOffsetFix, projection, fLength, color, true)

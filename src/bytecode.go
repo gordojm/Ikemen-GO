@@ -394,6 +394,8 @@ const (
 	OC_const_displayname
 	OC_const_stagevar_info_author
 	OC_const_stagevar_info_displayname
+	OC_const_stagevar_info_ikemenversion
+	OC_const_stagevar_info_mugenversion
 	OC_const_stagevar_info_name
 	OC_const_stagevar_camera_boundleft
 	OC_const_stagevar_camera_boundright
@@ -2377,8 +2379,8 @@ func (be BytecodeExp) run_const(c *Char, i *int, oc *Char) {
 			p8.gi().nameLow == sys.stringPool[sys.workingState.playerNo].List[*(*int32)(unsafe.Pointer(&be[*i]))])
 		*i += 4
 	// StageVar
-	case OC_const_stagevar_info_name:
-		sys.bcStack.PushB(sys.stage.nameLow ==
+	case OC_const_stagevar_info_author:
+		sys.bcStack.PushB(sys.stage.authorLow ==
 			sys.stringPool[sys.workingState.playerNo].List[*(*int32)(
 				unsafe.Pointer(&be[*i]))])
 		*i += 4
@@ -2387,8 +2389,12 @@ func (be BytecodeExp) run_const(c *Char, i *int, oc *Char) {
 			sys.stringPool[sys.workingState.playerNo].List[*(*int32)(
 				unsafe.Pointer(&be[*i]))])
 		*i += 4
-	case OC_const_stagevar_info_author:
-		sys.bcStack.PushB(sys.stage.authorLow ==
+	case OC_const_stagevar_info_ikemenversion:
+		sys.bcStack.PushF(sys.stage.ikemenverF)
+	case OC_const_stagevar_info_mugenversion:
+		sys.bcStack.PushF(sys.stage.mugenverF)
+	case OC_const_stagevar_info_name:
+		sys.bcStack.PushB(sys.stage.nameLow ==
 			sys.stringPool[sys.workingState.playerNo].List[*(*int32)(
 				unsafe.Pointer(&be[*i]))])
 		*i += 4
@@ -2990,7 +2996,8 @@ func (be BytecodeExp) run_ex(c *Char, i *int, oc *Char) {
 	case OC_ex_ishost:
 		sys.bcStack.PushB(c.isHost())
 	case OC_ex_jugglepoints:
-		*sys.bcStack.Top() = c.jugglePoints(*sys.bcStack.Top())
+		v1 := sys.bcStack.Pop()
+		sys.bcStack.PushI(c.jugglePoints(v1.ToI()))
 	case OC_ex_localcoord_x:
 		sys.bcStack.PushF(sys.cgi[c.playerNo].localcoord[0])
 	case OC_ex_localcoord_y:
@@ -3046,7 +3053,9 @@ func (be BytecodeExp) run_ex(c *Char, i *int, oc *Char) {
 	case OC_ex_movecountered:
 		sys.bcStack.PushI(c.moveCountered())
 	case OC_ex_mugenversion:
-		sys.bcStack.PushF(c.mugenVersionF())
+		sys.bcStack.PushF(c.gi().mugenverF)
+		// Here the version is always checked directly in the character instead of the working state
+		// This is because in a custom state this trigger will be used to know the enemy's version rather than our own
 	case OC_ex_pausetime:
 		sys.bcStack.PushI(c.pauseTimeTrigger())
 	case OC_ex_physics:
@@ -5519,10 +5528,10 @@ const (
 	explod_interpolate_pfx_color
 	explod_interpolate_pfx_hue
 	explod_interpolation
-	explod_redirectid
 	explod_animplayerno
 	explod_spriteplayerno
 	explod_last = iota + palFX_last + 1 - 1
+	explod_redirectid
 )
 
 func (sc explod) Run(c *Char, _ []int32) bool {
@@ -5902,13 +5911,6 @@ func (sc modifyExplod) Run(c *Char, _ []int32) bool {
 
 	StateControllerBase(sc).run(c, func(paramID byte, exp []BytecodeExp) bool {
 		switch paramID {
-		case explod_redirectid:
-			if rid := sys.playerID(exp[0].evalI(c)); rid != nil {
-				crun = rid
-				redirscale = c.localscl / crun.localscl
-			} else {
-				return false
-			}
 		case explod_animplayerno:
 			pn := int(exp[0].evalI(c)) - 1
 			if crun.validatePlayerNo(pn, "animPlayerNo", "modifyExplod") {
@@ -6266,24 +6268,26 @@ func (sc modifyExplod) Run(c *Char, _ []int32) bool {
 					eachExpl(func(e *Explod) {
 						e.animelem = 1
 						e.animelemtime = 0
-						e.setAnim(animNo, apn, spn, ffx)
+						e.animNo = animNo
+						e.setAnim(e.animNo, apn, spn, ffx)
 					})
 				}
 			case explod_animelem:
-				animelem := exp[0].evalI(c)
+				v1 := exp[0].evalI(c)
 				eachExpl(func(e *Explod) {
+					e.animelem = v1
+					e.animelemtime = 0
 					e.interpolate_animelem[1] = -1
-					e.animelem = animelem
 					if e.anim != nil {
 						e.anim.Action() // This being in this place can cause a nil animation crash
 					}
 					e.setAnimElem()
 				})
 			case explod_animelemtime:
-				animelemtime := exp[0].evalI(c)
+				v1 := exp[0].evalI(c)
 				eachExpl(func(e *Explod) {
 					//e.interpolate_animelem[1] = -1 // TODO: Check animelemtime and interpolation interaction
-					e.animelemtime = animelemtime
+					e.animelemtime = v1
 					e.setAnimElem()
 				})
 			case explod_animfreeze:
@@ -10687,6 +10691,8 @@ type assertInput StateControllerBase
 
 const (
 	assertInput_flag byte = iota
+	assertInput_flag_B
+	assertInput_flag_F
 	assertInput_redirectid
 )
 
@@ -10700,6 +10706,18 @@ func (sc assertInput) Run(c *Char, _ []int32) bool {
 		switch paramID {
 		case assertInput_flag:
 			crun.inputFlag |= InputBits(exp[0].evalI(c))
+		case assertInput_flag_B:
+			if crun.facing >= 0 {
+				crun.inputFlag |= IB_PL
+			} else {
+				crun.inputFlag |= IB_PR
+			}
+		case assertInput_flag_F:
+			if crun.facing >= 0 {
+				crun.inputFlag |= IB_PR
+			} else {
+				crun.inputFlag |= IB_PL
+			}
 		}
 		return true
 	})
@@ -11520,14 +11538,22 @@ const (
 )
 
 func (sc modifyBgm) Run(c *Char, _ []int32) bool {
+	// No BGM to modify
+	// TODO: Maybe it'd be safer to init the system with a dummy BGM?
+	if sys.bgm.ctrl == nil {
+		return false
+	}
+
 	var volumeSet, loopStartSet, loopEndSet, posSet, freqSet = false, false, false, false, false
 	var volume, loopstart, loopend, position int = 100, 0, 0, 0
+	var freqmul float32 = 1.0
+
 	// Safety default sets
 	if sl, ok := sys.bgm.volctrl.Streamer.(*StreamLooper); ok {
 		loopstart = sl.loopstart
 		loopend = sl.loopend
 	}
-	var freqmul float32 = 1.0
+
 	StateControllerBase(sc).run(c, func(paramID byte, exp []BytecodeExp) bool {
 		switch paramID {
 		case modifyBgm_volume:
@@ -11548,25 +11574,25 @@ func (sc modifyBgm) Run(c *Char, _ []int32) bool {
 		}
 		return true
 	})
-	if sys.bgm.ctrl != nil {
-		// Set values that are different only
-		if volumeSet {
-			volumeScaled := int(float64(volume) / 100.0 * float64(sys.cfg.Sound.MaxBGMVolume))
-			sys.bgm.bgmVolume = int(Min(int32(volumeScaled), int32(sys.cfg.Sound.MaxBGMVolume)))
-			sys.bgm.UpdateVolume()
-		}
-		if posSet {
-			sys.bgm.Seek(position)
-		}
-		if sl, ok := sys.bgm.volctrl.Streamer.(*StreamLooper); ok {
-			if (loopStartSet && sl.loopstart != loopstart) || (loopEndSet && sl.loopend != loopend) {
-				sys.bgm.SetLoopPoints(loopstart, loopend)
-			}
-		}
-		if freqSet && sys.bgm.freqmul != freqmul {
-			sys.bgm.SetFreqMul(freqmul)
+
+	// Set values that are different only
+	if volumeSet {
+		volumeScaled := int(float64(volume) / 100.0 * float64(sys.cfg.Sound.MaxBGMVolume))
+		sys.bgm.bgmVolume = int(Min(int32(volumeScaled), int32(sys.cfg.Sound.MaxBGMVolume)))
+		sys.bgm.UpdateVolume()
+	}
+	if posSet {
+		sys.bgm.Seek(position)
+	}
+	if sl, ok := sys.bgm.volctrl.Streamer.(*StreamLooper); ok {
+		if (loopStartSet && sl.loopstart != loopstart) || (loopEndSet && sl.loopend != loopend) {
+			sys.bgm.SetLoopPoints(loopstart, loopend)
 		}
 	}
+	if freqSet && sys.bgm.freqmul != freqmul {
+		sys.bgm.SetFreqMul(freqmul)
+	}
+
 	return false
 }
 
@@ -11602,12 +11628,11 @@ func (sc modifySnd) Run(c *Char, _ []int32) bool {
 
 	x := &crun.pos[0]
 	ls := crun.localscl
+	var snd *SoundChannel
 	var ch, pri int32 = -1, 0
+	var stopgh, stopcs int32 = -1, -1 // Undefined bools
 	var vo, fr float32 = 100, 1.0
-	snd := crun.soundChannels.Get(-1)
-	stopgh, stopcs := false, false
 	freqMulSet, volumeSet, prioritySet, panSet, loopStartSet, loopEndSet, posSet, lcSet, loopSet := false, false, false, false, false, false, false, false, false
-	stopghSet, stopcsSet := false, false
 	var loopstart, loopend, position, lc int = 0, 0, 0, 0
 	var p float32 = 0
 
@@ -11662,12 +11687,13 @@ func (sc modifySnd) Run(c *Char, _ []int32) bool {
 			}
 			lcSet = true
 		case modifySnd_stopongethit:
-			stopgh = exp[0].evalB(c)
+			stopgh = Btoi(exp[0].evalB(c))
 		case modifySnd_stoponchangestate:
-			stopcs = exp[0].evalB(c)
+			stopcs = Btoi(exp[0].evalB(c))
 		}
 		return true
 	})
+
 	// Grab the correct sound channel now
 	channelCount := 1
 	if ch < 0 {
@@ -11724,11 +11750,11 @@ func (sc modifySnd) Run(c *Char, _ []int32) bool {
 				snd.SetVolume(vo)
 			}
 			// These flags can be updated regardless since there are no calculations involved
-			if stopghSet {
-				snd.stopOnGetHit = stopgh
+			if stopgh >= 0 {
+				snd.stopOnGetHit = stopgh != 0
 			}
-			if stopcsSet {
-				snd.stopOnChangeState = stopcs
+			if stopcs >= 0 {
+				snd.stopOnChangeState = stopgh != 0
 			}
 		}
 	}
@@ -11986,8 +12012,8 @@ const (
 	text_color
 	text_xshear
 	text_id
-	text_redirectid
 	text_last = iota + palFX_last + 1 - 1
+	text_redirectid
 )
 
 func (sc text) Run(c *Char, _ []int32) bool {
@@ -12041,7 +12067,14 @@ func (sc text) Run(c *Char, _ []int32) bool {
 				fnt = -1
 			}
 		case text_localcoord:
-			ts.SetLocalcoord(exp[0].evalF(c), exp[1].evalF(c))
+			var x, y float32
+			x = exp[0].evalF(c)
+			if len(exp) > 1 {
+				y = exp[1].evalF(c)
+			}
+			if x > 0 && y > 0 { // TODO: Maybe this safeguard could be in SetLocalcoord instead
+				ts.SetLocalcoord(x, y)
+			}
 		case text_bank:
 			ts.bank = exp[0].evalI(c)
 		case text_align:
@@ -12981,30 +13014,7 @@ func (sc targetAdd) Run(c *Char, _ []int32) bool {
 		return true
 	})
 
-	// Check if ID exists
-	if pid > 0 {
-		for i := range sys.chars {
-			for j := range sys.chars[i] {
-				if sys.chars[i][j].id == pid {
-					// Add target to char's "target" list
-					// This function already prevents duplicating targets
-					crun.addTarget(pid)
-					// Add char to target's "targeted by" list
-					// Keep juggle points if target already exists
-					jug := crun.gi().data.airjuggle
-					for _, v := range sys.chars[i][j].ghv.targetedBy {
-						if v[0] == crun.id {
-							jug = v[1]
-						}
-					}
-					// Remove then readd char to the list with the new juggle points
-					sys.chars[i][j].ghv.dropId(crun.id)
-					sys.chars[i][j].ghv.targetedBy = append(sys.chars[i][j].ghv.targetedBy, [...]int32{crun.id, jug})
-					break
-				}
-			}
-		}
-	}
+	crun.targetAddSctrl(pid)
 
 	return false
 }
