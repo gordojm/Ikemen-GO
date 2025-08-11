@@ -547,7 +547,7 @@ function start.f_setMusic(num, data)
 	start.bgmround = 0
 	start.t_music = {}
 	local side = 2
-	for _, v in ipairs({'music', 'musicfinal', 'musiclife', 'musicvictory', 'musicvictory'}) do
+	for _, v in ipairs({'music', 'musicfinal', 'musiclife', 'musicliferound', 'musictransition', 'musicvictory', 'musicvictory'}) do
 		if start.t_music[v] == nil then
 			start.t_music[v] = {}
 		end
@@ -568,20 +568,25 @@ function start.f_setMusic(num, data)
 		-- append t_music table
 		if t_ref ~= nil then
 			-- musicX tracks are nested using round numbers as table keys
-			if v == 'music' then
+			if v == 'music' or v == 'musicliferound' or v == 'musictransition' then
 				for k2, v2 in pairs(t_ref) do
-					local track = math.random(1, #v2)
-					start.t_music[v][k2] = {
-						bgmusic = v2[track].bgmusic,
-						bgmvolume = v2[track].bgmvolume,
-						bgmloopstart = v2[track].bgmloopstart,
-						bgmloopend = v2[track].bgmloopend
-					}
+					-- Safety check: Skip empty arrays to prevent math.random crash
+					if #v2 > 0 then
+						local track = math.random(1, #v2)
+						start.t_music[v][k2] = {
+							bgmusic = v2[track].bgmusic,
+							bgmvolume = v2[track].bgmvolume,
+							bgmloopstart = v2[track].bgmloopstart,
+							bgmloopend = v2[track].bgmloopend
+						}
+					end
 				end
 			else
-				local track = math.random(1, #t_ref)
-				-- musicvictory tracks are nested using team side as table keys
-				if v == 'musicvictory' then
+				-- Safety check: Skip empty arrays to prevent math.random crash
+				if #t_ref > 0 then
+					local track = math.random(1, #t_ref)
+					-- musicvictory tracks are nested using team side as table keys
+					if v == 'musicvictory' then
 					start.t_music[v][side] = {
 						bgmusic = t_ref[track].bgmusic,
 						bgmvolume = t_ref[track].bgmvolume,
@@ -597,6 +602,7 @@ function start.f_setMusic(num, data)
 						bgmloopend = t_ref[track].bgmloopend
 					}
 				end
+				end
 			end
 		end
 		if v == 'musicvictory' then
@@ -609,6 +615,14 @@ function start.f_setMusic(num, data)
 			start.t_music[k] = main.t_selStages[num][k]
 		else
 			start.t_music[k] = v
+		end
+	end
+	-- bgmratio.liferoundX, bgmtrigger.liferoundX
+	if main.t_selStages[num] ~= nil then
+		for k, v in pairs(main.t_selStages[num]) do
+			if k:match('^bgmratio_liferound[0-9]+$') or k:match('^bgmtrigger_liferound[0-9]+$') then
+				start.t_music[k] = v
+			end
 		end
 	end
 end
@@ -1782,7 +1796,7 @@ function launchFight(data)
 		t.p2rounds = data.p2rounds or nil
 		t.exclude = data.exclude or {}
 		t.musicData = {}
-		-- Parse musicX / musicfinal / musiclife / musicvictory arguments
+		-- Parse musicX / musicfinal / musiclife / musicliferound / musicvictory arguments
 		for k, v in pairs(data) do
 			if k:match('^music') then
 				-- old syntax with only string argument maintained for backward compatibility with previous builds
@@ -2108,48 +2122,6 @@ function start.f_selectScreen()
 			end
 		end
 	end
-
-	--cell drawList
-	local drawList = {}
-	local charfacing = motif.select_info['cell_' .. col .. '_' .. row .. '_facing'] or motif.select_info.portrait_facing
-	local randomfacing = motif.select_info['cell_' .. col .. '_' .. row .. '_facing'] or motif.select_info.cell_random_facing
-	local cellfacing = motif.select_info['cell_' .. col .. '_' .. row .. '_facing'] or motif.select_info.cell_bg_facing
-
-	for row = 1, motif.select_info.rows do
-		for col = 1, motif.select_info.columns do
-			local t = start.t_grid[row][col]
-			if t.skip ~= 1 then
-				--draw cell background
-				if (t.char ~= nil and (t.hidden == 0 or t.hidden == 3)) or motif.select_info.showemptyboxes == 1 then
-					table.insert(drawList, {
-						anim = motif.select_info.cell_bg_data,
-						x = motif.select_info.pos[1] + t.x,
-						y = motif.select_info.pos[2] + t.y,
-						facing = cellfacing
-					})
-				end
-				--draw random cell
-				if t.char == 'randomselect' or t.hidden == 3 then
-					table.insert(drawList, {
-						anim = motif.select_info.cell_random_data,
-						x = motif.select_info.pos[1] + t.x + motif.select_info.portrait_offset[1],
-						y = motif.select_info.pos[2] + t.y + motif.select_info.portrait_offset[2],
-						facing = randomfacing
-					})
-				end
-				--draw face cell
-				if t.char_ref ~= nil and t.hidden == 0 then
-					table.insert(drawList, {
-						anim = start.f_getCharData(t.char_ref).cell_data,
-						x = motif.select_info.pos[1] + t.x + motif.select_info.portrait_offset[1],
-						y = motif.select_info.pos[2] + t.y + motif.select_info.portrait_offset[2],
-						facing = charfacing
-					})
-				end
-			end
-		end
-	end
-	
 	while not selScreenEnd do
 		counter = counter + 1
 		--credits
@@ -2171,7 +2143,39 @@ function start.f_selectScreen()
 			end
 		end
 		--draw cell art
-		batchDraw(drawList)
+		for row = 1, motif.select_info.rows do
+			for col = 1, motif.select_info.columns do
+				local t = start.t_grid[row][col]
+				if t.skip ~= 1 then
+					--draw cell background
+					if (t.char ~= nil and (t.hidden == 0 or t.hidden == 3)) or motif.select_info.showemptyboxes == 1 then
+						main.f_animPosDraw(
+							motif.select_info.cell_bg_data,
+							motif.select_info.pos[1] + t.x,
+							motif.select_info.pos[2] + t.y,
+							(motif.select_info['cell_' .. col .. '_' .. row .. '_facing'] or motif.select_info.cell_bg_facing)
+						)
+					end
+					--draw random cell
+					if t.char == 'randomselect' or t.hidden == 3 then
+						main.f_animPosDraw(
+							motif.select_info.cell_random_data,
+							motif.select_info.pos[1] + t.x + motif.select_info.portrait_offset[1],
+							motif.select_info.pos[2] + t.y + motif.select_info.portrait_offset[2],
+							(motif.select_info['cell_' .. col .. '_' .. row .. '_facing'] or motif.select_info.cell_random_facing)
+						)
+					--draw face cell
+					elseif t.char ~= nil and t.hidden == 0 then
+						main.f_animPosDraw(
+							start.f_getCharData(t.char_ref).cell_data,
+							motif.select_info.pos[1] + t.x + motif.select_info.portrait_offset[1],
+							motif.select_info.pos[2] + t.y + motif.select_info.portrait_offset[2],
+							(motif.select_info['cell_' .. col .. '_' .. row .. '_facing'] or motif.select_info.portrait_facing)
+						)
+					end
+				end
+			end
+		end
 		--draw done cursors
 		for side = 1, 2 do
 			for _, v in pairs(start.p[side].t_selected) do
@@ -4154,6 +4158,7 @@ function start.f_stageMusic()
 	-- Reset
 	if roundstart() then
 		didLoadStageBGM = false
+		start.liferoundWasPlaying = false -- Reset transition flag
 	end
 	-- bgmusic / bgmusic.roundX / bgmusic.final
 	if (stagetime() > 0 and not didLoadStageBGM and roundstate() <= 2) then
@@ -4180,15 +4185,44 @@ function start.f_stageMusic()
 				main.f_playBGM(matchno() == 1 and roundNo == 1, start.t_music.music[roundNo].bgmusic, 1, start.t_music.music[roundNo].bgmvolume, start.t_music.music[roundNo].bgmloopstart, start.t_music.music[roundNo].bgmloopend)
 				didLoadStageBGM = true
 			-- stop versus screen track or life bgm even if stage music is not assigned
-			elseif start.bgmround == 1 or start.bgmstate == 1 then
+			elseif start.bgmround == 1 or start.bgmstate == 1 or start.bgmstate == 2 then
 				main.f_playBGM(true)
 				didLoadStageBGM = true
 			end
 		end
 		start.bgmstate = 0
 	end
-	-- bgmusic.life
-	if start.t_music.musiclife.bgmusic ~= nil and start.bgmstate == 0 and roundstate() == 2 then
+	-- bgmusic.liferoundX
+	local roundNo = start.bgmround
+	if start.t_music.musicliferound ~= nil and start.t_music.musicliferound[roundNo] ~= nil and start.t_music.musicliferound[roundNo].bgmusic ~= nil and start.bgmstate == 0 and roundstate() == 2 then
+		local bgmratio_key = 'bgmratio_liferound' .. roundNo
+		local bgmtrigger_key = 'bgmtrigger_liferound' .. roundNo
+		local bgmratio = start.t_music[bgmratio_key] or 30
+		local bgmtrigger = start.t_music[bgmtrigger_key] or 1
+		for i = 1, 2 do
+			player(i) --assign sys.debugWC to player i
+			-- continue only if p1/p2 life meets life ratio criteria
+			if life() / lifemax() * 100 <= bgmratio then
+				local ok = true
+				for j = 1, numpartner() do
+					player(j * 2 + i) --assign sys.debugWC to member j
+					-- skip music playback if any of the team members doesn't meet life ratio criteria
+					if life() / lifemax() * 100 > bgmratio then
+						ok = false
+						break
+					end
+				end
+				if ok then
+					if bgmtrigger == 1 or (enemy(0) and decisiveround()) then
+						main.f_playBGM(true, start.t_music.musicliferound[roundNo].bgmusic, 1, start.t_music.musicliferound[roundNo].bgmvolume, start.t_music.musicliferound[roundNo].bgmloopstart, start.t_music.musicliferound[roundNo].bgmloopend)
+						start.bgmstate = 1
+						break
+					end
+				end
+			end
+		end
+	-- bgmusic.life (fallback)
+	elseif start.t_music.musiclife.bgmusic ~= nil and start.bgmstate == 0 and roundstate() == 2 then
 		for i = 1, 2 do
 			player(i) --assign sys.debugWC to player i
 			-- continue only if p1/p2 life meets life ratio criteria
@@ -4212,10 +4246,30 @@ function start.f_stageMusic()
 			end
 		end
 	end
+	
+	-- Play transition music between rounds (roundstate = 4)  
+	local roundNo = start.bgmround
+	if roundstate() == 4 then
+		-- Stop liferoundX music if it's still playing and set flag for transition
+		if start.bgmstate == 1 then
+			main.f_playBGM(true) -- Stop current music
+			start.liferoundWasPlaying = true -- Flag for transition music
+			start.bgmstate = 0
+		end
+		
+		if start.liferoundWasPlaying and start.bgmstate == 0 then
+			if start.t_music.musictransition ~= nil and start.t_music.musictransition[roundNo] ~= nil and start.t_music.musictransition[roundNo].bgmusic ~= nil then
+				main.f_playBGM(false, start.t_music.musictransition[roundNo].bgmusic, start.t_music.musictransition[roundNo].bgmloop or 0, start.t_music.musictransition[roundNo].bgmvolume, start.t_music.musictransition[roundNo].bgmloopstart, start.t_music.musictransition[roundNo].bgmloopend)
+				start.bgmstate = 2 -- Set special state to indicate transition music is playing
+			end
+			start.liferoundWasPlaying = false -- Clear flag
+		end
+	end
 	-- bgmusic.victory
 	if #start.t_music.musicvictory > 0 and start.bgmstate ~= -1 and roundstate() == 3 then
 		for i = 1, 2 do
 			if start.t_music.musicvictory[i] ~= nil and player(i) and win() and decisiveround() then --assign sys.debugWC to player i
+				-- Stop liferoundX music if it's still playing before starting victory music
 				main.f_playBGM(true, start.t_music.musicvictory[i].bgmusic, 1, start.t_music.musicvictory[i].bgmvolume, start.t_music.musicvictory[i].bgmloopstart, start.t_music.musicvictory[i].bgmloopend)
 				start.bgmstate = -1
 				break
