@@ -579,15 +579,6 @@ function start.f_setMusic(num, data)
 							bgmloopstart = v2[track].bgmloopstart,
 							bgmloopend = v2[track].bgmloopend
 						}
-						-- DEBUG: Log musicliferound loading
-						if v == 'musicliferound' then
-							print("DEBUG: Loaded " .. v .. "[" .. k2 .. "] = " .. tostring(v2[track].bgmusic))
-						end
-					else
-						-- DEBUG: Log empty arrays
-						if v == 'musicliferound' then
-							print("DEBUG: Empty array for " .. v .. "[" .. k2 .. "]")
-						end
 					end
 				end
 			else
@@ -631,8 +622,6 @@ function start.f_setMusic(num, data)
 		for k, v in pairs(main.t_selStages[num]) do
 			if k:match('^bgmratio_liferound[0-9]+$') or k:match('^bgmtrigger_liferound[0-9]+$') then
 				start.t_music[k] = v
-				-- DEBUG: Log liferound property loading
-				print("DEBUG: Loaded property " .. k .. " = " .. tostring(v))
 			end
 		end
 	end
@@ -4210,9 +4199,6 @@ function start.f_stageMusic()
 		local bgmtrigger_key = 'bgmtrigger_liferound' .. roundNo
 		local bgmratio = start.t_music[bgmratio_key] or 30
 		local bgmtrigger = start.t_music[bgmtrigger_key] or 1
-		-- DEBUG: Log property values
-		print("DEBUG: Using " .. bgmratio_key .. "=" .. tostring(bgmratio) .. ", " .. bgmtrigger_key .. "=" .. tostring(bgmtrigger))
-		print("DEBUG: Attempting to play: " .. tostring(start.t_music.musicliferound[roundNo].bgmusic))
 		for i = 1, 2 do
 			player(i) --assign sys.debugWC to player i
 			-- continue only if p1/p2 life meets life ratio criteria
@@ -4228,7 +4214,6 @@ function start.f_stageMusic()
 				end
 				if ok then
 					if bgmtrigger == 1 or (enemy(0) and decisiveround()) then
-						print("DEBUG: PLAYING LIFEROUND MUSIC: " .. tostring(start.t_music.musicliferound[roundNo].bgmusic))
 						main.f_playBGM(true, start.t_music.musicliferound[roundNo].bgmusic, 1, start.t_music.musicliferound[roundNo].bgmvolume, start.t_music.musicliferound[roundNo].bgmloopstart, start.t_music.musicliferound[roundNo].bgmloopend)
 						start.bgmstate = 1
 						break
@@ -4238,7 +4223,6 @@ function start.f_stageMusic()
 		end
 	-- bgmusic.life (fallback)
 	elseif start.t_music.musiclife.bgmusic ~= nil and start.bgmstate == 0 and roundstate() == 2 then
-		print("DEBUG: Using fallback musiclife: " .. tostring(start.t_music.musiclife.bgmusic))
 		for i = 1, 2 do
 			player(i) --assign sys.debugWC to player i
 			-- continue only if p1/p2 life meets life ratio criteria
@@ -4268,7 +4252,6 @@ function start.f_stageMusic()
 	if roundstate() == 4 then
 		-- Stop liferoundX music if it's still playing and set flag for transition
 		if start.bgmstate == 1 then
-			print("DEBUG: Stopping liferound music for transition")
 			main.f_playBGM(true) -- Stop current music
 			start.liferoundWasPlaying = true -- Flag for transition music
 			start.bgmstate = 0
@@ -4276,7 +4259,6 @@ function start.f_stageMusic()
 		
 		if start.liferoundWasPlaying and start.bgmstate == 0 then
 			if start.t_music.musictransition ~= nil and start.t_music.musictransition[roundNo] ~= nil and start.t_music.musictransition[roundNo].bgmusic ~= nil then
-				print("DEBUG: Playing transition music for round " .. roundNo)
 				main.f_playBGM(false, start.t_music.musictransition[roundNo].bgmusic, start.t_music.musictransition[roundNo].bgmloop or 0, start.t_music.musictransition[roundNo].bgmvolume, start.t_music.musictransition[roundNo].bgmloopstart, start.t_music.musictransition[roundNo].bgmloopend)
 				start.bgmstate = 2 -- Set special state to indicate transition music is playing
 			end
@@ -4288,9 +4270,6 @@ function start.f_stageMusic()
 		for i = 1, 2 do
 			if start.t_music.musicvictory[i] ~= nil and player(i) and win() and decisiveround() then --assign sys.debugWC to player i
 				-- Stop liferoundX music if it's still playing before starting victory music
-				if start.bgmstate == 1 then
-					print("DEBUG: Stopping liferound music for victory music")
-				end
 				main.f_playBGM(true, start.t_music.musicvictory[i].bgmusic, 1, start.t_music.musicvictory[i].bgmvolume, start.t_music.musicvictory[i].bgmloopstart, start.t_music.musicvictory[i].bgmloopend)
 				start.bgmstate = -1
 				break
